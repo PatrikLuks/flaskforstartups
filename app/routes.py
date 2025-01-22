@@ -6,6 +6,7 @@ from flask import Blueprint, render_template
 # Third-party imports
 
 # App imports
+from flask import redirect, url_for
 from app import db_manager
 from app import login_manager
 from .views import (
@@ -13,15 +14,68 @@ from .views import (
     account_management_views,
     static_views,
 )
-from .models import User,Uzivatele
+from .models import User,Uzivatele, PocetDeti
 
 bp = Blueprint('routes', __name__)
 
 # alias
 db = db_manager.session
 from flask_wtf import FlaskForm, RecaptchaField
-from wtforms import StringField, PasswordField, BooleanField, SubmitField,DateField
-from wtforms.validators import DataRequired, Email, EqualTo, Length,InputRequired
+from wtforms import StringField, PasswordField, BooleanField, SubmitField,DateField, IntegerField
+from wtforms.validators import DataRequired, Email, EqualTo, Length,InputRequired, ValidationError
+import re
+
+
+class PocetDetiForm(FlaskForm):
+    def validate_name(form, field):
+        if not re.match("^[A-Za-z]*$", field.data):
+            raise ValidationError("Name must contain only letters without special characters")
+
+    def validate_pocet_deti(form, field):
+        if not field.data.isdigit() or int(field.data) < 0:
+            raise ValidationError("Pocet deti must be a positive integer")
+
+    name = StringField('Name', validators=[InputRequired(message="You can't leave this empty"), validate_name])
+    pocet_deti = StringField('Pocet Deti', validators=[InputRequired(message="You can't leave this empty"), validate_pocet_deti])
+
+
+@bp.route("/smazat/<int:id>", methods=["POST"])
+def smazat(id):
+    # Vyhledání záznamu podle ID
+    zaznam = db.query(PocetDeti).get(id)
+    if zaznam:
+        db.delete(zaznam)
+        db.commit()
+    return redirect(url_for("routes.vypis"))
+
+
+
+@bp.route("/pocet_deti", methods=["GET", "POST"])
+def pocet_deti():
+    form=PocetDetiForm()
+    if form.validate_on_submit():
+        new_entry = PocetDeti(jmeno=form.name.data, pocet_deti=int(form.pocet_deti.data))
+        db.add(new_entry)
+        db.commit()
+        return redirect(url_for("routes.vypis"))  # Přesměrování na /vypis
+    return render_template("pocet_deti.html",form=form)
+
+class FormFormular(FlaskForm):
+    def validate_characters(form, field):
+        if not re.match("^[A-Za-z]*$", field.data):
+            raise ValidationError("Field must contain only letters without special characters")
+
+    name = StringField('Name', validators=[InputRequired(message="You can't leave this empty"), validate_characters])
+    surename = StringField('Surename', validators=[InputRequired(message="You can't leave this empty"), validate_characters])
+
+
+@bp.route("/vypis", methods=["GET"])
+def vypis():
+    # Načtení všech záznamů z databáze
+    zaznamy = db.query(PocetDeti).all()
+    return render_template("vypis.html", zaznamy=zaznamy)
+
+
 
 class FormFormular(FlaskForm):
     name = StringField('Name', validators=[ InputRequired(message="You can't leave this empty")])
